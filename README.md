@@ -51,11 +51,4 @@ Contract methods :
 
 Real example
 
-In testing, a seller submitted an unrelated link as proof of delivering a Twitter thread that was never actually posted. The AI judge caught the mismatch and ruled in the buyer's favor, explaining: *"The provided link does not contain a Twitter thread as described in the deal, failing to prove the work was delivered." This is exactly the kind of judgment a traditional smart contract could never make.
-
-What's next
-
-Support for image/pictorial evidence (screenshots, photos) alongside text, so disputes aren't limited to written proof
- Multi-party deals (more than one buyer/seller)
- Optional milestone-based partial releases for larger projects
- A reputation layer that tracks resolved-in-your-favor history per address.
+In testing, a buyer disputed a deal for a Twitter article, claiming the work was never delivered. The seller responded with a link to the actual posted thread as proof. The AI judge reviewed both sides and ruled in the seller's favor, explaining: Seller provided verifiable proof of delivery via the posted Twitter thread, so the buyer's claim that no work was delivered is not supported. In an earlier test, the AI ruled the opposite way , a seller submitted an unrelated link as false proof, and the AI correctly caught the mismatch and ruled for the buyer. Together, these show the AI judge basing its decision on the actual evidence each time, not a fixed or biased outcome.
