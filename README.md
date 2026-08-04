@@ -3,7 +3,7 @@ Fair Deal, An AI-Powered Escrow & Dispute Resolution
 Fair Deal is an escrow contract built on GenLayer that removes the need for a human middleman in online trades. It holds a buyer's payment, releases it once the buyer is satisfied, and if something goes wrong, lets an AI judge review both sides of a dispute and decide who gets paid, using GenLayer's Optimistic Democracy consensus.
 
 Live app: https://funmilayo-409.github.io/fair-deal-genlayer/
-Deployed contract (GenLayer Studio network): 0x7e62b279aE5D6D02B8e9fAFFe3d428691E1c77d7
+Deployed contract (GenLayer Studio network): 0x3bfC8E3b5bE9869460d0BA0C97c2A4B4cC21410d
 
 The problem
 
