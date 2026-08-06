@@ -10,6 +10,7 @@ class FairDeal(gl.Contract):
     is_disputed: bool
     dispute_reason: str
     seller_evidence: str
+    seller_evidence_url: str
     is_resolved: bool
     winner: str
     resolution_reason: str
@@ -23,6 +24,7 @@ class FairDeal(gl.Contract):
         self.is_disputed = False
         self.dispute_reason = ""
         self.seller_evidence = ""
+        self.seller_evidence_url = ""
         self.is_resolved = False
         self.winner = ""
         self.resolution_reason = ""
@@ -37,11 +39,14 @@ class FairDeal(gl.Contract):
     def release_funds(self) -> None:
         assert gl.message.sender_address == self.buyer, "Only the buyer can release funds."
         assert not self.is_released, "Funds already released."
+        assert not self.is_disputed, "This deal is under dispute and cannot be released manually. Use resolve_dispute instead."
         assert self.amount_locked > 0, "No funds to release."
 
+        payout = self.amount_locked
         self.is_released = True
+        self.amount_locked = u256(0)
         recipient = gl.get_contract_at(self.seller)
-        recipient.emit_transfer(value=self.amount_locked)
+        recipient.emit_transfer(value=payout)
 
     @gl.public.write
     def open_dispute(self, reason: str) -> None:
@@ -54,43 +59,70 @@ class FairDeal(gl.Contract):
         self.dispute_reason = reason
 
     @gl.public.write
-    def submit_seller_evidence(self, evidence: str) -> None:
+    def submit_seller_evidence(self, evidence: str, evidence_url: str = "") -> None:
         assert gl.message.sender_address == self.seller, "Only the seller can submit evidence."
         assert self.is_disputed, "There is no open dispute."
         assert not self.is_resolved, "This dispute is already resolved."
+        assert len(evidence.strip()) > 0, "Evidence cannot be empty."
 
         self.seller_evidence = evidence
+        self.seller_evidence_url = evidence_url.strip()
 
     @gl.public.write
     def resolve_dispute(self) -> None:
+        sender = gl.message.sender_address
+        assert sender == self.buyer or sender == self.seller, "Only the buyer or seller can trigger resolution."
         assert self.is_disputed, "There is no open dispute to resolve."
+        assert not self.is_released, "This deal is already completed."
         assert not self.is_resolved, "This dispute is already resolved."
+        assert len(self.seller_evidence.strip()) > 0, "Resolution requires the seller to submit evidence first."
 
-        verdict_prompt = f"""
-        You are a fair, impartial judge resolving a payment dispute between a buyer and seller.
-
-        Deal description: "{self.description}"
-        Buyer's complaint: "{self.dispute_reason}"
-        Seller's evidence/response: "{self.seller_evidence}"
-
-        Decide who should receive the locked funds. Reply with ONLY one single word:
-        "seller" if the seller delivered what was promised and should be paid,
-        "buyer" if the seller did not deliver and the buyer should be refunded.
-        No punctuation, no extra words, nothing else.
-        """
+        description = self.description
+        dispute_reason = self.dispute_reason
+        seller_evidence = self.seller_evidence
+        evidence_url = self.seller_evidence_url
 
         def get_verdict():
-            res = gl.nondet.exec_prompt(verdict_prompt)
-            return res.strip().lower()
+            # If the seller provided a link, actually fetch it rather than
+            # trusting the seller's written claim alone.
+            fetched_content = ""
+            if evidence_url:
+                try:
+                    fetched_content = gl.nondet.web.render(evidence_url, mode='text')[:3000]
+                except Exception:
+                    fetched_content = "(Could not retrieve the submitted link.)"
+
+            verdict_prompt = f"""
+            You are a fair, impartial judge resolving a payment dispute between a buyer and seller.
+
+            Deal description: "{description}"
+            Buyer's complaint: "{dispute_reason}"
+            Seller's written response: "{seller_evidence}"
+            Actual content retrieved from the seller's submitted evidence link (if any): "{fetched_content}"
+
+            Base your decision on the ACTUAL retrieved content where available, not just the
+            seller's claim. Decide who should receive the locked funds. Reply with ONLY one
+            single word: "seller" or "buyer". No punctuation, no extra words, nothing else.
+            """
+
+            # Give the model a couple of attempts to produce a clean, valid verdict.
+            for _ in range(3):
+                res = gl.nondet.exec_prompt(verdict_prompt).strip().lower()
+                if res in ("buyer", "seller"):
+                    return res
+            # If it still hasn't produced a valid verdict after retries, fail loudly
+            # rather than silently guessing.
+            raise Exception("Judge failed to produce a valid buyer/seller verdict.")
 
         winner = gl.eq_principle.strict_eq(get_verdict)
+        assert winner in ("buyer", "seller"), "Invalid verdict produced."
 
         reason_prompt = f"""
         You are a fair, impartial judge. You just decided that the "{winner}" should receive
         the funds in this dispute:
-        Deal description: "{self.description}"
-        Buyer's complaint: "{self.dispute_reason}"
-        Seller's evidence: "{self.seller_evidence}"
+        Deal description: "{description}"
+        Buyer's complaint: "{dispute_reason}"
+        Seller's evidence: "{seller_evidence}"
 
         Write one short, clear sentence (max 25 words) explaining why.
         Reply with ONLY the sentence, nothing else.
@@ -104,17 +136,20 @@ class FairDeal(gl.Contract):
             principle="Both responses give a short, clear explanation for the same judgment, even if worded differently."
         )
 
+        payout = self.amount_locked
+
         self.winner = winner
         self.resolution_reason = reason
         self.is_resolved = True
         self.is_released = True
+        self.amount_locked = u256(0)
 
         if winner == "seller":
             recipient = gl.get_contract_at(self.seller)
         else:
             recipient = gl.get_contract_at(self.buyer)
 
-        recipient.emit_transfer(value=self.amount_locked)
+        recipient.emit_transfer(value=payout)
 
     @gl.public.view
     def get_status(self) -> str:
@@ -135,4 +170,4 @@ class FairDeal(gl.Contract):
 
     @gl.public.view
     def get_dispute_info(self) -> str:
-        return f"Reason: {self.dispute_reason} | Seller evidence: {self.seller_evidence} | Winner: {self.winner} | Explanation: {self.resolution_reason}"
+        return f"Reason: {self.dispute_reason} | Seller evidence: {self.seller_evidence} | Evidence URL: {self.seller_evidence_url} | Winner: {self.winner} | Explanation: {self.resolution_reason}"
