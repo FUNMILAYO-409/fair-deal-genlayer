@@ -3,7 +3,7 @@ Fair Deal, An AI-Powered Escrow & Dispute Resolution
 Fair Deal is an escrow contract built on GenLayer that removes the need for a human middleman in online trades. It holds a buyer's payment, releases it once the buyer is satisfied, and if something goes wrong, lets an AI judge review both sides of a dispute and decide who gets paid, using GenLayer's Optimistic Democracy consensus.
 
 Live app: https://funmilayo-409.github.io/fair-deal-genlayer/
-Deployed contract (GenLayer Studio network): 0xa0D86088D19906cc27488de514b6271a12b3e741
+Deployed contract (GenLayer Studio network): 0xf22574880AA94aB60590aEce6A4716Dc4e2B5b5D
 
 The problem
 
@@ -23,8 +23,11 @@ Why this matters :
 
 Traditional smart contracts can move money, but they can't judge anything subjective , they only understand exact, predefined conditions. Fair Deal shows what becomes possible when a contract can actually reason about evidence, real dispute resolution without a platform fee, a support ticket queue, or a biased human arbitrator.
 
-Tech stack :
+time-out protection: 
 
+If a seller never responds to a dispute, funds could otherwise stay locked forever. To prevent this, opening a dispute starts a response deadline. If the seller hasn't submitted evidence once that window passes, the buyer can call claim_timeout_refund to reclaim their funds directly, no AI judgment needed, since there's nothing to evaluate if the seller never showed up. This path is blocked the moment the seller actually submits evidence, so it can't be used to bypass a real resolution. Covered by contract tests in test_fair_deal_timeout.py.
+
+Tech stack :
 Contract: Python, using GenLayer's (gl.Contract framework).
 Consensus: GenLayer's Optimistic Democracy  (gl.eq_principle.strict_eq) for the binary verdict, (gl.eq_principle.prompt_comparative) for the AI's written explanation (since exact wording naturally varies between validators, but the underlying reasoning should agree)
 Frontend: Single-page vanilla HTML/JS app using GenLayer's official (genlayer-js` SDK) connected via MetaMask
@@ -51,4 +54,7 @@ Contract methods :
 
 Real example
 
-in testing a buyer paid for a Github readme which he claimed was not delivered , the seller provided proof of the readme written with a url link to the github readme, the AI evaluate the evidence provided and in favour of the seller .
+Fair Deal's dispute resolution actually fetches and reads submitted evidence links rather than trusting a seller's written claim alone. Two contrasting tests show it responding to what it actually finds:
+
+Unverifiable evidence is ruled for the buyer. A seller submitted a link to an X (Twitter) post as proof of a delivered thread. X's pages are heavily JavaScript-rendered, so the retrieved content came back empty. The AI judge correctly ruled it couldn't verify the claim: "the seller provided no verifiable proof of delivering the thread, the buyer is entitled to a refund."
+Verifiable evidence is ruled for the seller. A seller submitted a link to a plain-text page (this repo's own README) as proof of a completed deliverable. The AI judge retrieved the real content and ruled: "the seller provided a verifiable link to the completed README, satisfying the agreed deliverable, so payment is warranted."
