@@ -71,6 +71,10 @@ class FairDeal(gl.Contract):
         assert not self.is_resolved, "This dispute is already resolved."
         assert len(evidence.strip()) > 0, "Evidence cannot be empty."
 
+        now = int(datetime.datetime.now().timestamp())
+        elapsed = now - int(self.dispute_opened_at)
+        assert elapsed < int(self.response_window_seconds), "The response deadline has already passed. The buyer may now claim a timeout refund; evidence can no longer be submitted for this dispute."
+
         self.seller_evidence = evidence
         self.seller_evidence_url = evidence_url.strip()
 
