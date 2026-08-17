@@ -6,10 +6,15 @@ funds indefinitely by never responding to a dispute. These tests prove that
 after the response window passes with no seller evidence, the buyer can
 reclaim their funds directly via claim_timeout_refund() -- and that they
 CANNOT do so before the deadline, and CANNOT do so once the seller has
-actually responded.
+actually responded. Also covers that the seller cannot submit evidence
+after the deadline has passed, closing the race condition between
+submit_seller_evidence and claim_timeout_refund.
 
-Run with: gltest tests/test_fair_deal_timeout.py
+Run with: gltest test_fair_deal_timeout.py
 (requires: pip install genlayer-test)
+
+Note: the contract file is referenced at the repository root
+(fair_deal.py), matching the actual layout of this repo.
 """
 
 import time
@@ -20,7 +25,7 @@ def test_buyer_cannot_claim_timeout_before_deadline(direct_deploy, direct_vm, di
     """The buyer should not be able to reclaim funds before the response window has passed."""
     with direct_vm.prank(direct_alice):
         contract = direct_deploy(
-            "contracts/fair_deal.py",
+            "fair_deal.py",
             str(direct_bob),
             "Payment for a Twitter thread about GenLayer",
             5,  # response_window_seconds
@@ -39,7 +44,7 @@ def test_buyer_can_claim_timeout_after_deadline(direct_deploy, direct_vm, direct
     """
     with direct_vm.prank(direct_alice):
         contract = direct_deploy(
-            "contracts/fair_deal.py",
+            "fair_deal.py",
             str(direct_bob),
             "Payment for a Twitter thread about GenLayer",
             2,  # short response window for testing
@@ -64,7 +69,7 @@ def test_seller_cannot_claim_timeout_refund(direct_deploy, direct_vm, direct_ali
     """Only the buyer should be able to trigger a timeout refund."""
     with direct_vm.prank(direct_alice):
         contract = direct_deploy(
-            "contracts/fair_deal.py",
+            "fair_deal.py",
             str(direct_bob),
             "Payment for a Twitter thread about GenLayer",
             2,
@@ -87,10 +92,10 @@ def test_timeout_claim_blocked_once_seller_responds(direct_deploy, direct_vm, di
     """
     with direct_vm.prank(direct_alice):
         contract = direct_deploy(
-            "contracts/fair_deal.py",
+            "fair_deal.py",
             str(direct_bob),
             "Payment for a Twitter thread about GenLayer",
-            2,
+            5,
         )
         contract.fund_deal(value=100)
         contract.open_dispute(args=["Seller never delivered anything"])
@@ -98,8 +103,33 @@ def test_timeout_claim_blocked_once_seller_responds(direct_deploy, direct_vm, di
     with direct_vm.prank(direct_bob):
         contract.submit_seller_evidence(args=["I delivered it, here is proof", ""])
 
-    time.sleep(3)
+    time.sleep(6)
 
     with direct_vm.prank(direct_alice):
         with direct_vm.expect_revert("already submitted evidence"):
             contract.claim_timeout_refund()
+
+
+def test_seller_cannot_submit_evidence_after_deadline(direct_deploy, direct_vm, direct_alice, direct_bob):
+    """
+    Closes the race condition the reviewer flagged: once the response
+    deadline has passed, the seller can no longer submit evidence at all,
+    even if claim_timeout_refund hasn't been called yet. Only one path
+    should ever be valid at a time.
+    """
+    with direct_vm.prank(direct_alice):
+        contract = direct_deploy(
+            "fair_deal.py",
+            str(direct_bob),
+            "Payment for a Twitter thread about GenLayer",
+            2,  # short response window for testing
+        )
+        contract.fund_deal(value=100)
+        contract.open_dispute(args=["Seller never delivered anything"])
+
+    # Let the deadline pass without the buyer claiming a refund yet.
+    time.sleep(3)
+
+    with direct_vm.prank(direct_bob):
+        with direct_vm.expect_revert("deadline has already passed"):
+            contract.submit_seller_evidence(args=["I delivered it, here is proof", ""])
